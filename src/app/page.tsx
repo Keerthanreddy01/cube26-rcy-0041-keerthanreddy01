@@ -367,9 +367,10 @@ export default function RecoverApp() {
                   boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
                 }}>
                   <img
-                    src="/Logo.png"
+                    src="/brand/logo.png"
                     alt="RECOVER Logo"
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    onError={e => { (e.currentTarget as HTMLImageElement).src = '/Logo.png'; }}
                   />
                 </div>
                 <div>
@@ -816,7 +817,12 @@ function EmptyState({ onRunDemo, loading }: { onRunDemo: () => void; loading: bo
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         marginBottom: 18,
       }}>
-        <img src="/Logo.png" alt="RECOVER Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        <img
+          src="/brand/logo.png"
+          alt="RECOVER Logo"
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          onError={e => { (e.currentTarget as HTMLImageElement).src = '/Logo.png'; }}
+        />
       </div>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
         RECOVER — Recovery Manager
@@ -4602,7 +4608,12 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             overflow: 'hidden',
           }}>
-            <img src="/Logo.png" alt="RECOVER Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img
+              src="/brand/logo.png"
+              alt="RECOVER Logo"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              onError={e => { (e.currentTarget as HTMLImageElement).src = '/Logo.png'; }}
+            />
           </div>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>RECOVER — Recovery Manager</div>

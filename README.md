@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/brand/logo.png" alt="RECOVER Logo" width="72" height="72" />
+</p>
+
 # Recovery Manager
 
 ## RECOVER — Turn Operational Evidence into Defensible Recovery Claims

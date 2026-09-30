@@ -7,3 +7,8 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+.next/
+dist/
+build/
+*.tsbuildinfo
+*.log

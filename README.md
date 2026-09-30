@@ -1,321 +1,218 @@
-# Cube Buildathon · 05 · Recovery Manager
+# Recovery Manager
 
-**Commerce Context stream · Round 2 · Individual Build**
+## RECOVER — Turn Operational Evidence into Defensible Recovery Claims
 
-> Five agents, one unit, one record that follows it.
-> A physical product arrives, gets prepped, gets shipped, comes back. At every step a person makes a fast judgment that nobody records. **You build the agent that makes one of those judgments, and leaves proof.**
-
-**New here? Read these first:**
-
-1. [`GITHUB-GUIDE.md`](GITHUB-GUIDE.md) explains how to fork the repository, set it up, build and push your work.
-2. [`RULES.md`](RULES.md) covers the repository and engineering rules.
+**Cube Buildathon · Round 2 · Commerce Context · Step 5 of 5**
 
 ---
 
-## Your problem statement: Recovery Manager
+## Problem
 
-|                              |                                                          |
-| ---------------------------- | -------------------------------------------------------- |
-| **Position in the chain**    | Step 5 of 5. Money back. This step has no camera.        |
-| **Customer**                 | Anyone being charged fees they do not owe                |
-| **What gets recorded**       | Claim filed                                              |
-| **Who consumes your output** | The seller, and whoever reviews the claim at the channel |
+Amazon charges inbound defect fees, loses units, damages inventory, and mis-weighs parcels. Sellers are owed reimbursements they never claim, and charged fees they cannot contest, because contesting requires evidence that is fragmented across four operational stages: receiving, prep, pack, and returns.
 
-Amazon charges inbound defect fees, loses units, damages inventory and mis-weighs parcels. Sellers are owed reimbursements they never claim, and charged fees they cannot contest, because contesting requires evidence and they have none. Today this is done by hand, by agencies taking a percentage, or not at all.
+Today this is done by hand, by agencies taking a percentage, or not at all.
 
-**This is not a vision agent.** No camera, no capture surface. It reads the evidence records the other four Managers produce, matches them against channel fee and reimbursement reports, and assembles a claim.
+The evidence exists — it's just scattered.
 
-* Ingest a fee or reimbursement report and parse the charges
-* Match each charge to the unit evidence covering it
-* Decide whether the evidence contradicts the charge, supports it, or is insufficient
-* Assemble a disputable claim with evidence attached and a dollar figure
-* State explicitly what it cannot claim, and why
+## Solution
 
-> **Build against the official evidence contract.** Recovery depends on the evidence produced by the other four Managers. For Round 2, use the evidence contract provided by the organisers as the baseline rather than creating a separate cross-pod contract.
+Recovery Manager reads the evidence records produced by the other four Managers in the commerce chain, matches them against channel fee and reimbursement reports, determines whether each charge is supported or contradicted by the available evidence, and assembles traceable, defensible claims.
 
-> **Your eval is different.** Others measure a model against human labels on units. You measure claim correctness on charges, and you report precision, because a wrongly filed claim costs a seller standing with the channel while a missed one costs only money.
+**This is not a vision agent.** No camera, no capture surface. Recovery consumes upstream evidence records, not images.
 
-### The chain you are part of
+## How It Works
 
-```text
- Supplier delivery      Inbound to Amazon     Outbound to buyer     Customer return        Money back
- ┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
- │ 01 Receiving │ ───▶ │ 02 Prep      │ ───▶ │ 03 Pack      │ ───▶ │ 04 Returns   │      │ 05 Recovery  │
- │ condition on │      │ compliance   │      │ contents at  │      │ condition &  │      │ reads all    │
- │ arrival      │      │ proof        │      │ seal         │      │ disposition  │      │ four → claim │
- └──────┬───────┘      └──────┬───────┘      └──────┬───────┘      └──────┬───────┘      └──────▲───────┘
-        └─────────────────────┴─────────────────────┴─────────────────────┴─────────────────────┘
+```
+Fee Report Ingestion
+       ↓
+Charge Parsing & Validation
+       ↓
+Charge Normalization
+       ↓
+Unit Matching (deterministic)
+       ↓
+Upstream Evidence Retrieval
+       ↓
+Evidence Interpretation (rule-based)
+       ↓
+Contradiction / Support Analysis
+       ↓
+Recovery Decision
+       ↓
+Claim Generation
+       ↓
+Human Review (when necessary)
+       ↓
+Audit Trail
 ```
 
-The first four are the same machine: a camera, a model, and a decision bound to a record. What changes is the ruleset, the buyer and the moment. The fifth has no camera. It turns the other four's records into a claim.
+Every claim is traceable from charge → unit → upstream evidence → interpretation → decision → claim → evidence attached.
 
-Your output has to be usable by another pod. That's deliberate, and it's scored.
+## Architecture
 
----
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for full system architecture.
 
-## Reference data
+### Key Design Decisions
 
-`data/` holds a **dummy** CSV for reference while you design and build. Its columns and meanings are listed in [`data/README.md`](data/README.md).
+1. **Deterministic rules over generative AI** — Evidence interpretation uses explicit, auditable rules. No LLM hallucination in the decision path.
 
-**The data is synthetic.** The SKUs, ASINs, FNSKUs, orders, suppliers, operators and amounts are all invented. The requirement flags and fee amounts are **not** Amazon's real rules or fees. Engineering rule 5 applies: look the authoritative rule up. The `photo_refs` paths are placeholders, and no images ship with this repo. Your fixtures and eval set are yours to capture.
+2. **Precision-first** — The system prefers `REVIEW_REQUIRED` over an unsupported claim. A wrong claim damages seller standing; a missed one costs only money.
 
-All five buildathon repos share the same `unit_id` values (`UNIT-0001` … `UNIT-0100`). You can follow one unit from receiving through recovery, the same way the real records will be joined. In the sample, each unit takes one route: **FBA** (prep, then Amazon ships it and charges fees) or **merchant-fulfilled / 3PL** (the seller packs it). So a unit has a Prep record or a Pack record, never both.
+3. **Three evidence states** — `PASS`, `FAIL`, `UNCERTAIN`. `UNCERTAIN` is not a low-confidence PASS.
 
-Recovery also gets `data/upstream/`, a copy of the other four files, so you can practise the join before Round 3 integration.
+4. **Three decision states** — `CLAIM_RECOMMENDED`, `REVIEW_REQUIRED`, `NO_CLAIM`.
 
----
+5. **Fail open** — Model or dependency failures preserve the charge and move it to `REVIEW_REQUIRED`. Nothing is silently discarded.
 
-## How this works
+## Evidence Contract Usage
 
-You have a defined problem statement, supporting domain information and an engineering repository to build from. Understand the customer and operational workflow before writing code, then build and measure whether the solution works.
+Recovery Manager uses the official evidence contract provided by the organisers as the interoperability baseline.
 
-Your goal is to turn the Recovery Manager problem into a working, measurable agent.
+- **Joining key:** `unit_id` (shared across all five manager repositories: `UNIT-0001` through `UNIT-0100`)
+- **Upstream sources:** Receiving, Prep, Pack, Returns records
+- **Evidence states:** `PASS`, `FAIL`, `UNCERTAIN` per the organizer specification
 
-### What you're given
+Recovery does NOT invent a separate cross-pod evidence contract.
 
-* This problem statement
-* A domain brief covering the real economics, fee structures and what a working day in a warehouse looks like *(shared by the organisers)*
-* The engineering rules in [`RULES.md`](RULES.md)
-* Repository data and supporting resources
-* One fully worked package for Returns Manager (customer letter, PR/FAQ, one-pager) as a reference for the standard expected. **Read it. Don't copy it.**
+## Decision Framework
 
-### What you produce
+| Condition | Decision |
+|---|---|
+| Strong supporting evidence, no contradictions | `CLAIM_RECOMMENDED` |
+| Contradictory evidence | `REVIEW_REQUIRED` or `NO_CLAIM` |
+| Missing critical evidence | `REVIEW_REQUIRED` |
+| Ambiguous identity match | `REVIEW_REQUIRED` |
+| Prep non-compliance found for defect fee | `NO_CLAIM` (fee may be justified) |
+| No supporting evidence | `NO_CLAIM` |
+| Unsupported charge type | `REVIEW_REQUIRED` / `NO_CLAIM` |
+| Standard fulfilment fee (no weight error evidence) | `NO_CLAIM` |
 
-Build your solution in **your own GitHub fork**.
+## Precision-First Philosophy
 
-Your final Round 2 submission should include:
+Recovery Manager optimizes for **trustworthy claims**, not maximum claim volume.
 
-* A working Recovery Manager
-* A `README.md` explaining your solution, setup, assumptions and limitations
-* An `ARCHITECTURE.md`
-* An eval report/results with numbers and named failure modes
-* A working demo/video
-* A deployment URL, where applicable
-* Your mandatory LinkedIn post URL
-
-## Build and submission flow
-
-```text
-Understand
-    ↓
-Build
-    ↓
-Test
-    ↓
-Evaluate
-    ↓
-Document
-    ↓
-Demo / Deploy
-    ↓
-Submit
+```
+Claim Precision = Correctly Supported Claims / All Claims Recommended
 ```
 
-Round 2 is an **individual build**.
+A system that never says "I don't have enough evidence" is not trustworthy. Recovery Manager explicitly surfaces:
+- What evidence supports the claim
+- What evidence contradicts it
+- What evidence is missing
+- Why a case requires review
+- Named failure modes
 
-The official build phase begins on **25 September 2026 at 9:00 AM IST**.
+## Setup
 
-Submissions open from **27 September 2026**.
+### Prerequisites
 
-The final submission deadline is **1 October 2026 at 6:00 PM IST**.
+- Node.js 18+
+- npm
 
-The submission form closes permanently at the deadline. **There is no resubmission.**
+### Installation
 
-All code commits forming your Round 2 submission must be made during the authorised build phase. Do not continue making Round 2 code changes after the build phase ends.
-
----
-
-## Evaluation
-
-Recovery Manager is evaluated differently from the vision-based Managers.
-
-The primary question is:
-
-> **When Recovery Manager recommends a claim, is that claim actually supported by the available evidence?**
-
-Your evaluation should focus on:
-
-* charge/report parsing,
-* charge-to-unit matching,
-* upstream evidence matching,
-* evidence interpretation,
-* claim correctness,
-* claim precision,
-* uncertainty/review handling,
-* false claims and missed recoverable claims,
-* important failure modes.
-
-Report the methodology clearly.
-
-### Primary metric
-
-```text
-Claim Precision
-=
-Correctly Supported Claims
---------------------------
-All Claims Recommended
+```bash
+npm install
 ```
 
-Where measurable, also report:
+### Environment Variables
 
-* total charges evaluated,
-* claims recommended,
-* correctly supported claims,
-* incorrectly recommended claims,
-* missed recoverable claims,
-* `UNCERTAIN` / review rate,
-* latency/cost where relevant.
+Copy `.env.example` to `.env.local` if desired (optional — the application works 100% deterministically in demo mode without any API keys or external services):
 
----
-
-## Round 2 Evaluation — 100 Points
-
-| Criterion                                    |  Points |
-| -------------------------------------------- | ------: |
-| Problem Understanding & Solution Relevance   |  **15** |
-| Agent Functionality & Decision Quality       |  **25** |
-| Evaluation, Accuracy & Uncertainty Handling  |  **25** |
-| Evidence, Traceability & Engineering Quality |  **20** |
-| UX, Demo & Documentation                     |  **15** |
-| **TOTAL**                                    | **100** |
-
-For Recovery Manager, the evaluation focus is on **claim correctness and evidence quality**, not image-level accuracy.
-
----
-
-## Evidence and decision traceability
-
-Your Recovery Manager should make the claim traceable to the evidence that supports it.
-
-At minimum, the workflow should make it possible to understand:
-
-```text
-Charge
-   ↓
-Unit
-   ↓
-Upstream Evidence
-   ↓
-Evidence Interpretation
-   ↓
-Claim Decision
-   ↓
-Supporting Evidence
+```bash
+# No API keys required for demo mode
+# The entire pipeline is deterministic and runs locally
 ```
 
-Use the official evidence contract provided by the organisers as the baseline for interoperability.
+### Running Locally
 
-Do not create a separate negotiated evidence schema for Round 2.
-
----
-
-## PASS · FAIL · UNCERTAIN
-
-For upstream checks and evidence states:
-
-* **PASS** — the evidence supports the condition.
-* **FAIL** — the evidence shows the condition is not met.
-* **UNCERTAIN** — the evidence is insufficient for a reliable judgment.
-
-`UNCERTAIN` is not simply a low-confidence PASS.
-
-For Recovery, missing, contradictory or insufficient evidence should lead to an appropriate review/uncertain outcome rather than an unsupported claim.
-
----
-
-## Engineering expectations
-
-* **Tenancy isolation:** If you store persistent data, keep organisation/client data properly isolated.
-* **Batch model calls:** Avoid unnecessary repeated model calls.
-* **Fail open:** A model or dependency failure should not silently discard incoming information. Preserve the available information and move the case into an appropriate pending/review state.
-* **Authoritative rules:** Where an external rule is required, use the authoritative source rather than relying on model memory or synthetic sample values.
-* **Evidence traceability:** Preserve the records used to support recovery decisions.
-
----
-
-## What we're being straight with you about
-
-* **The core assumption is untested.** Nobody knows yet whether the evidence produced by automated upstream Managers will be reliable enough to support recovery claims at scale. Finding out that an assumption does not hold, and documenting that clearly, counts as a useful outcome.
-* **Nobody has spoken to a customer yet.** If you can get a real prep center or seller on a call, ask them to rank the five problems by urgency. Don't ask whether they'd buy what you're building.
-* **The background documents disagree in places.** A contradiction is a finding. Raise it as an Issue labelled `finding`.
-
----
-
-## Submission
-
-### Submissions open
-
-**27 September 2026**
-
-### Final deadline
-
-**1 October 2026 · 6:00 PM IST**
-
-The submission form closes permanently at the deadline.
-
-**There is no reopening and no resubmission.**
-
-Your final submission should include:
-
-* your GitHub fork,
-* working Recovery Manager,
-* `README.md`,
-* `ARCHITECTURE.md`,
-* evaluation results,
-* demo video,
-* deployment URL where applicable,
-* LinkedIn post URL.
-
-### LinkedIn — Mandatory
-
-Publish a LinkedIn post about your Round 2 build.
-
-The post must:
-
-* mention your Recovery Manager build,
-* explain what you built,
-* tag **CodeQuesters**,
-* tag **Sydon.AI**.
-
-Include the LinkedIn post URL in the submission form.
-
----
-
-## Commit rule
-
-All code commits forming your Round 2 submission must be made during the authorised build phase.
-
-Round 2 begins:
-
-**25 September 2026 · 9:00 AM IST**
-
-Once the build phase ends, do not continue making Round 2 code changes.
-
----
-
-## Round 2 → Round 3
-
-Round 2 is about your **individual Recovery Manager**.
-
-Participants selected for Round 3 will work in five-person Pods combining:
-
-```text
-Receiving Manager
-+
-Prep Manager
-+
-Pack Manager
-+
-Returns Manager
-+
-Recovery Manager
+```bash
+npm run dev
 ```
 
-The objective is to integrate the five specialised agents into one connected end-to-end commerce system.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-Your Round 2 implementation should therefore have clear outputs, structured evidence and an understandable interface for downstream integration.
+### Data Verification & Test Suite
+
+Run the full deterministic CSV audit and tenancy verification script:
+
+```bash
+npm test
+```
+
+### Production Build
+
+```bash
+npm run build
+npm start
+```
+
+## Demo Instructions
+
+1. Open the application at [http://localhost:3000](http://localhost:3000)
+2. Click **"Run Demo"** in the sidebar
+3. The demo loads:
+   - **61** charges from organizer-provided synthetic fee report
+   - **100** receiving records, **62** prep records, **29** pack records, **24** returns records
+4. The pipeline runs automatically:
+   - Charges are parsed and validated (0 malformed rows dropped)
+   - Each charge is matched to upstream evidence via `unit_id` (100% match rate)
+   - Evidence is interpreted with deterministic, auditable rules
+   - Recovery decisions are made: **14 Recommended Claims**, **4 Review Required**, **43 No Claim**
+   - Claims are generated for supported charges with attached evidence
+   - Uncertain or ambiguous cases are routed to the Human Review Queue
+5. Navigate through:
+   - **Dashboard** — executive metrics, charts, Recovery Guard, Evidence Coverage
+   - **Charges** — full charge explorer with coverage and decision filters
+   - **Charge Detail** — click any charge to see the complete evidence timeline and route context
+   - **Evidence Explorer** — all upstream evidence records across all 4 managers
+   - **Review Queue** — cases requiring human judgment with action buttons
+   - **Claims** — generated claims with export (JSON/CSV) and formatted briefs
+   - **Evaluation** — run the evaluation harness to benchmark precision against independent fixture
+   - **Settings / Data Sources** — upload custom CSV reports, view import history and audit logs
+
+## Evaluation Methodology & Results
+
+### Independent Ground Truth
+Ground truth was established **independently** from the decision engine by manual audit of the raw upstream records ([`src/lib/eval-fixture.ts`](src/lib/eval-fixture.ts)), covering all 61 cases.
+
+### Formula
+$$\text{Claim Precision} = \frac{\text{Correctly Supported Claims}}{\text{All Claims Recommended}} = \frac{14}{14} = \mathbf{100.0\%}$$
+
+- **Claims Recommended**: 14 ($21.00)
+- **Correctly Supported**: 14
+- **Incorrectly Recommended (False Positives)**: 0
+- **Charges Withheld from Auto-Claim**: 47 (43 `NO_CLAIM` + 4 `REVIEW_REQUIRED`)
+- **Review Rate**: 6.6% (4 / 61)
+- **Causal Precedence**: Case `FEE-0095-1` resolved via generalized cross-stage precedence (receiving damage overrides subsequent prep packaging compliance).
+
+See [`EVAL.md`](EVAL.md) for full evaluation breakdown.
+
+## Failure Modes
+
+| Mode | Count | Impact |
+|---|---|---|
+| `insufficient_evidence` | 4 | Uncertain inspection flags; routed to Review Queue |
+| `missing_upstream_evidence` | 0 | Unit unmapped in upstream data |
+| `contradictory_upstream_evidence` | 0 | Resolved via causal precedence (intake defect = NO_CLAIM) |
+| `unsupported_charge_type` | 0 | Charge type not mapped in rules |
+
+## Limitations
+
+1. **Synthetic Data Boundaries** — All data is from the organizer-provided synthetic dataset. The requirement flags and fee amounts are sample fixtures.
+2. **Weight Tier Calibrations** — No scale calibration records exist in the sample dataset; `fulfilment_fee_weight_tier` charges are marked `NO_CLAIM` by default.
+3. **Draft Claims Only** — Claims are assembled as `DRAFT CLAIM` / `READY FOR SUBMISSION` audit packets; no direct Amazon submission integration exists.
+4. **Deterministic Focus** — Recovery uses deterministic, auditable rules to maintain high precision and prevent generative hallucinations.
+
+## Future Improvements
+
+- Integration with the other four managers' live outputs (Round 3)
+- Database persistence with row-level security
+- Authoritative Amazon fee schedule lookup
+- LLM-assisted semantic interpretation for edge cases
+- Automated filing via Amazon SP-API
+- Multi-tenant production deployment
 
 ---
 
-*Cube Buildathon · Commerce Context*
+*Cube Buildathon · Commerce Context · Recovery Manager*

@@ -198,6 +198,23 @@ export default function RecoverApp() {
   const [coverageFilter, setCoverageFilter] = useState<string>('all');
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
   const [showAbout, setShowAbout] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Global hotkey: '/' or 'Cmd+K' / 'Ctrl+K' opens search, 'Escape' closes
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      if ((e.key === '/' && !isInput) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        setSearchOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   // Sync with browser history on back/forward buttons
   useEffect(() => {
@@ -391,11 +408,14 @@ export default function RecoverApp() {
             </div>
           </div>
 
-          {/* Quick Search Bar (Tasklify reference layout) */}
+          {/* Quick Search Bar (Interactive Command Palette trigger) */}
           <div style={{ padding: '0 2px', marginBottom: 12 }}>
-            <div
-              onClick={() => { navigateTo('charges'); }}
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              title="Global Search & Quick Actions (/ or Ctrl+K)"
               style={{
+                width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
@@ -406,14 +426,22 @@ export default function RecoverApp() {
                 color: 'var(--text-muted)',
                 fontSize: 12.5,
                 cursor: 'pointer',
-                transition: 'border-color 0.15s ease',
+                textAlign: 'left',
+                transition: 'all 0.15s ease',
+                boxSizing: 'border-box',
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#CBD5E1')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-primary)')}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = '#94A3B8';
+                e.currentTarget.style.background = '#F1F5F9';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--border-primary)';
+                e.currentTarget.style.background = '#F9FAFB';
+              }}
             >
-              <Search size={13} style={{ color: '#94A3B8' }} />
-              <span style={{ flex: 1, color: '#94A3B8' }}>Search</span>
-              <span style={{
+              <Search size={13} style={{ color: '#94A3B8', flexShrink: 0 }} />
+              <span style={{ flex: 1, color: '#64748B', fontWeight: 500, fontSize: 12 }}>Search</span>
+              <kbd style={{
                 fontSize: 10,
                 fontWeight: 600,
                 background: '#FFFFFF',
@@ -421,10 +449,12 @@ export default function RecoverApp() {
                 borderRadius: 4,
                 padding: '1px 5px',
                 color: '#94A3B8',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                fontFamily: 'inherit',
               }}>
                 /
-              </span>
-            </div>
+              </kbd>
+            </button>
           </div>
 
           {/* Navigation Items grouped by Category */}
@@ -798,6 +828,18 @@ export default function RecoverApp() {
       </div>
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+      {searchOpen && (
+        <CommandPaletteModal
+          onClose={() => setSearchOpen(false)}
+          store={store}
+          navigateTo={navigateTo}
+          onOpenAbout={() => { setSearchOpen(false); setShowAbout(true); }}
+          currency={currency}
+          setCurrency={setCurrency}
+          formatMoney={formatMoney}
+          onRunDemo={() => { setSearchOpen(false); handleRunDemo(); }}
+        />
+      )}
     </CurrencyContext.Provider>
   );
 }
@@ -839,6 +881,32 @@ function EmptyState({ onRunDemo, loading }: { onRunDemo: () => void; loading: bo
       </button>
     </div>
   );
+}
+
+// =============================================================================
+// CSV Export Helper
+// =============================================================================
+function downloadAnalysesCsv(items: ChargeAnalysis[], filename: string = 'recover_decisions.csv') {
+  if (typeof window === 'undefined') return;
+  const headers = ['Charge ID', 'Unit ID', 'Posted Date', 'Charge Type', 'Amount USD', 'Decision', 'Claim Amount USD', 'Evidence Count'];
+  const rows = items.map(a => [
+    a.charge.line_id,
+    a.charge.unit_id,
+    a.charge.posted_date,
+    `"${a.charge.charge_type}"`,
+    a.charge.amount_usd.toFixed(2),
+    a.decision,
+    a.claimAmount.toFixed(2),
+    a.evidence.length,
+  ]);
+  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // =============================================================================
@@ -894,25 +962,7 @@ function DashboardPage({ metrics, store, onViewCharge, setPage, onSelectCoverage
   }, []);
 
   const handleExportCsv = (items: ChargeAnalysis[], filename: string) => {
-    const headers = ['Charge ID', 'Unit ID', 'Posted Date', 'Charge Type', 'Amount USD', 'Decision', 'Claim Amount USD', 'Evidence Count'];
-    const rows = items.map(a => [
-      a.charge.line_id,
-      a.charge.unit_id,
-      a.charge.posted_date,
-      `"${a.charge.charge_type}"`,
-      a.charge.amount_usd.toFixed(2),
-      a.decision,
-      a.claimAmount.toFixed(2),
-      a.evidence.length,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadAnalysesCsv(items, filename);
     setToastMessage({ message: `Exported ${items.length} records to ${filename}` });
   };
 
@@ -4658,6 +4708,696 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 14px' }} onClick={onClose}>
             Close
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Command Palette / Global Search Modal
+// =============================================================================
+function CommandPaletteModal({
+  onClose,
+  store,
+  navigateTo,
+  onOpenAbout,
+  currency,
+  setCurrency,
+  formatMoney,
+  onRunDemo,
+}: {
+  onClose: () => void;
+  store: ReturnType<typeof getStore>;
+  navigateTo: (page: Page, chargeId?: string | null) => void;
+  onOpenAbout: () => void;
+  currency: CurrencyCode;
+  setCurrency: (c: CurrencyCode) => void;
+  formatMoney: (amount: number, options?: { showCode?: boolean; prefixApprox?: boolean }) => string;
+  onRunDemo: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Filter charges and analyses
+  const filteredCharges = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase().trim();
+    return store.analyses.filter(a => {
+      const lineId = a.charge.line_id.toLowerCase();
+      const unitId = a.charge.unit_id.toLowerCase();
+      const type = a.charge.charge_type.toLowerCase();
+      const sku = (a.charge.sku || '').toLowerCase();
+      const orderId = (a.charge.order_id || '').toLowerCase();
+      const decision = a.decision.toLowerCase();
+      const reason = (a.reasoning || '').toLowerCase();
+      return (
+        lineId.includes(q) ||
+        unitId.includes(q) ||
+        type.includes(q) ||
+        sku.includes(q) ||
+        orderId.includes(q) ||
+        decision.includes(q) ||
+        reason.includes(q)
+      );
+    }).slice(0, 8);
+  }, [store.analyses, query]);
+
+  // Suggested top recovery claims if search is empty
+  const topClaims = useMemo(() => {
+    return store.analyses
+      .filter(a => a.decision === 'CLAIM_RECOMMENDED')
+      .slice(0, 4);
+  }, [store.analyses]);
+
+  // Filter navigation pages
+  const filteredPages = useMemo(() => {
+    const pages: { id: Page; title: string; subtitle: string; icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }> }[] = [
+      { id: 'dashboard', title: 'Overview Dashboard', subtitle: 'Live recovery KPIs and pipeline health', icon: LayoutDashboard },
+      { id: 'charges', title: 'Charges Explorer', subtitle: `Browse all ${store.charges.length || 61} operational charges`, icon: FileText },
+      { id: 'review', title: 'Review Queue', subtitle: '4 disputed items requiring human sign-off', icon: AlertTriangle },
+      { id: 'claims', title: 'Recovery Claims', subtitle: '14 recommended claims ($21.00 potential)', icon: ShieldCheck },
+      { id: 'evidence', title: 'Evidence Graph & Timeline', subtitle: 'Multi-stream physical records and causation', icon: ClipboardCheck },
+      { id: 'evaluation', title: 'Evaluation Benchmark Lab', subtitle: '61/61 synthetic verification (100% precision)', icon: BarChart3 },
+      { id: 'sources', title: 'Data Ingestion & Upstream', subtitle: 'Receiving, Prep, Pack, and Returns streams', icon: Database },
+      { id: 'demo', title: 'Interactive Pipeline Demo', subtitle: 'Step-by-step walkthrough of recovery engine', icon: Play },
+    ];
+
+    if (!query.trim()) return pages.slice(0, 4);
+
+    const q = query.toLowerCase().trim();
+    return pages.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.subtitle.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    );
+  }, [query, store.charges.length]);
+
+  // Filter quick actions
+  const filteredActions = useMemo(() => {
+    const actions: { id: string; title: string; subtitle: string; icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>; run: () => void }[] = [
+      {
+        id: 'currency',
+        title: `Switch Currency to ${currency === 'USD' ? 'INR (₹96.10)' : 'USD ($)'}`,
+        subtitle: `Currently viewing in ${currency}`,
+        icon: DollarSign,
+        run: () => {
+          setCurrency(currency === 'USD' ? 'INR' : 'USD');
+          onClose();
+        },
+      },
+      {
+        id: 'export-csv',
+        title: 'Export Reconciliation CSV',
+        subtitle: `Download all ${store.analyses.length || 61} records formatted for accounting`,
+        icon: Download,
+        run: () => {
+          downloadAnalysesCsv(store.analyses, 'recover_all_decisions.csv');
+          onClose();
+        },
+      },
+      {
+        id: 'reload-engine',
+        title: 'Re-run Recovery Engine',
+        subtitle: 'Re-parse upstream streams and recompute causal precedence',
+        icon: RefreshCw,
+        run: () => {
+          onRunDemo();
+          onClose();
+        },
+      },
+      {
+        id: 'system-about',
+        title: 'System Architecture & Attribution',
+        subtitle: 'View 5-step commerce pipeline and creator credits',
+        icon: HelpCircle,
+        run: () => {
+          onClose();
+          onOpenAbout();
+        },
+      },
+    ];
+
+    if (!query.trim()) return actions;
+
+    const q = query.toLowerCase().trim();
+    return actions.filter(a =>
+      a.title.toLowerCase().includes(q) ||
+      a.subtitle.toLowerCase().includes(q) ||
+      a.id.toLowerCase().includes(q)
+    );
+  }, [query, currency, setCurrency, onClose, store.analyses, onRunDemo, onOpenAbout]);
+
+  // Flatten searchable selectable list for keyboard navigation
+  const selectableItems = useMemo(() => {
+    const list: { type: 'charge' | 'page' | 'action'; id: string; action: () => void }[] = [];
+
+    if (query.trim()) {
+      filteredCharges.forEach(c => {
+        list.push({
+          type: 'charge',
+          id: c.charge.line_id,
+          action: () => {
+            navigateTo('charge-detail', c.charge.line_id);
+            onClose();
+          },
+        });
+      });
+    }
+
+    filteredPages.forEach(p => {
+      list.push({
+        type: 'page',
+        id: p.id,
+        action: () => {
+          navigateTo(p.id);
+          onClose();
+        },
+      });
+    });
+
+    filteredActions.forEach(a => {
+      list.push({
+        type: 'action',
+        id: a.id,
+        action: a.run,
+      });
+    });
+
+    if (!query.trim()) {
+      topClaims.forEach(c => {
+        list.push({
+          type: 'charge',
+          id: c.charge.line_id,
+          action: () => {
+            navigateTo('charge-detail', c.charge.line_id);
+            onClose();
+          },
+        });
+      });
+    }
+
+    return list;
+  }, [query, filteredCharges, filteredPages, filteredActions, topClaims, navigateTo, onClose]);
+
+  // Key navigation (up/down/enter/escape)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev + 1) % Math.max(1, selectableItems.length));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev - 1 + selectableItems.length) % Math.max(1, selectableItems.length));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectableItems[selectedIndex]) {
+          selectableItems[selectedIndex].action();
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectableItems, selectedIndex, onClose]);
+
+  // Reset index when query changes
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.45)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        zIndex: 300,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: 80,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 620,
+          background: '#FFFFFF',
+          borderRadius: 12,
+          boxShadow: '0 20px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.08)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: 'calc(100vh - 140px)',
+          animation: 'fadeIn 0.15s ease-out',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Search Input Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '14px 18px',
+            borderBottom: '1px solid #E2E8F0',
+            background: '#FFFFFF',
+          }}
+        >
+          <Search size={18} style={{ color: '#64748B', flexShrink: 0 }} />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search charges, line IDs, units, claims, pages..."
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: 14.5,
+              fontWeight: 500,
+              color: '#0F172A',
+              background: 'transparent',
+              fontFamily: 'inherit',
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => { setQuery(''); inputRef.current?.focus(); }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#94A3B8',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Clear search"
+            >
+              <X size={15} />
+            </button>
+          )}
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: '#64748B',
+              background: '#F1F5F9',
+              border: '1px solid #CBD5E1',
+              borderRadius: 4,
+              padding: '2px 6px',
+              fontFamily: 'monospace',
+            }}
+          >
+            ESC
+          </span>
+        </div>
+
+        {/* Scrollable Results Area */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 8px' }}>
+          {query.trim() && filteredCharges.length === 0 && filteredPages.length === 0 && filteredActions.length === 0 && (
+            <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%', background: '#F8FAFC',
+                border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', margin: '0 auto 12px', color: '#94A3B8'
+              }}>
+                <Search size={18} />
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1E293B' }}>
+                No results found for &ldquo;{query}&rdquo;
+              </div>
+              <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
+                Search by Line ID (e.g. line_001), Unit ID (e.g. U1001), SKU, Fee Type, or navigation page
+              </div>
+            </div>
+          )}
+
+          {/* Charges Matches */}
+          {filteredCharges.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: '#94A3B8',
+                letterSpacing: '0.05em',
+                padding: '4px 12px 6px',
+                textTransform: 'uppercase',
+              }}>
+                Charges & Discrepancies ({filteredCharges.length})
+              </div>
+              {filteredCharges.map(item => {
+                const isSelected = selectableItems[selectedIndex]?.id === item.charge.line_id;
+                const isClaim = item.decision === 'CLAIM_RECOMMENDED';
+                const isReview = item.decision === 'REVIEW_REQUIRED';
+                const badgeBg = isClaim ? '#DCFCE7' : isReview ? '#FEF3C7' : '#F1F5F9';
+                const badgeColor = isClaim ? '#15803D' : isReview ? '#B45309' : '#64748B';
+
+                return (
+                  <div
+                    key={item.charge.line_id}
+                    onClick={() => {
+                      navigateTo('charge-detail', item.charge.line_id);
+                      onClose();
+                    }}
+                    onMouseEnter={() => {
+                      const itemIdx = selectableItems.findIndex(s => s.id === item.charge.line_id);
+                      if (itemIdx >= 0) setSelectedIndex(itemIdx);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: isSelected ? '#F1F5F9' : 'transparent',
+                      transition: 'background 0.1s ease',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: isClaim ? '#16A34A' : isReview ? '#F59E0B' : '#94A3B8',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
+                          <span style={{ fontFamily: 'monospace' }}>{item.charge.line_id}</span>
+                          <span style={{ color: '#CBD5E1' }}>·</span>
+                          <span style={{ fontWeight: 500, color: '#475569' }}>{item.charge.charge_type}</span>
+                          <span style={{ color: '#CBD5E1' }}>·</span>
+                          <span style={{ fontSize: 11.5, color: '#64748B', fontFamily: 'monospace' }}>Unit {item.charge.unit_id}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
+                          {item.reasoning}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: badgeBg,
+                          color: badgeColor,
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        {isClaim ? 'CLAIM' : isReview ? 'REVIEW' : 'NO CLAIM'}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#0F172A' }}>
+                        {formatMoney(item.claimAmount > 0 ? item.claimAmount : item.charge.amount_usd)}
+                      </span>
+                      <ChevronRight size={14} style={{ color: '#94A3B8' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Navigation Pages */}
+          {filteredPages.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: '#94A3B8',
+                letterSpacing: '0.05em',
+                padding: '4px 12px 6px',
+                textTransform: 'uppercase',
+              }}>
+                Navigation ({filteredPages.length})
+              </div>
+              {filteredPages.map(pageItem => {
+                const IconComponent = pageItem.icon;
+                const isSelected = selectableItems[selectedIndex]?.id === pageItem.id;
+
+                return (
+                  <div
+                    key={pageItem.id}
+                    onClick={() => {
+                      navigateTo(pageItem.id);
+                      onClose();
+                    }}
+                    onMouseEnter={() => {
+                      const itemIdx = selectableItems.findIndex(s => s.id === pageItem.id);
+                      if (itemIdx >= 0) setSelectedIndex(itemIdx);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: isSelected ? '#F1F5F9' : 'transparent',
+                      transition: 'background 0.1s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          background: isSelected ? '#FFFFFF' : '#F8FAFC',
+                          border: '1px solid #E2E8F0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#0F172A',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <IconComponent size={14} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
+                          {pageItem.title}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: '#64748B' }}>
+                          {pageItem.subtitle}
+                        </div>
+                      </div>
+                    </div>
+                    <ArrowRight size={13} style={{ color: '#94A3B8' }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Quick Actions */}
+          {filteredActions.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: '#94A3B8',
+                letterSpacing: '0.05em',
+                padding: '4px 12px 6px',
+                textTransform: 'uppercase',
+              }}>
+                Actions ({filteredActions.length})
+              </div>
+              {filteredActions.map(act => {
+                const IconComponent = act.icon;
+                const isSelected = selectableItems[selectedIndex]?.id === act.id;
+
+                return (
+                  <div
+                    key={act.id}
+                    onClick={() => act.run()}
+                    onMouseEnter={() => {
+                      const itemIdx = selectableItems.findIndex(s => s.id === act.id);
+                      if (itemIdx >= 0) setSelectedIndex(itemIdx);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: isSelected ? '#F1F5F9' : 'transparent',
+                      transition: 'background 0.1s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          background: isSelected ? '#FFFFFF' : '#F8FAFC',
+                          border: '1px solid #E2E8F0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#0F172A',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <IconComponent size={14} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
+                          {act.title}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: '#64748B' }}>
+                          {act.subtitle}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight size={14} style={{ color: '#94A3B8' }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Suggested Recovery Claims when query is empty */}
+          {!query.trim() && topClaims.length > 0 && (
+            <div style={{ marginBottom: 4 }}>
+              <div style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: '#94A3B8',
+                letterSpacing: '0.05em',
+                padding: '4px 12px 6px',
+                textTransform: 'uppercase',
+              }}>
+                Top Recommended Claims
+              </div>
+              {topClaims.map(item => {
+                const isSelected = selectableItems[selectedIndex]?.id === item.charge.line_id;
+
+                return (
+                  <div
+                    key={item.charge.line_id}
+                    onClick={() => {
+                      navigateTo('charge-detail', item.charge.line_id);
+                      onClose();
+                    }}
+                    onMouseEnter={() => {
+                      const itemIdx = selectableItems.findIndex(s => s.id === item.charge.line_id);
+                      if (itemIdx >= 0) setSelectedIndex(itemIdx);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      background: isSelected ? '#F1F5F9' : 'transparent',
+                      transition: 'background 0.1s ease',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: '#16A34A',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#0F172A' }}>
+                          <span style={{ fontFamily: 'monospace' }}>{item.charge.line_id}</span>
+                          <span style={{ color: '#CBD5E1' }}>·</span>
+                          <span style={{ fontWeight: 500, color: '#475569' }}>{item.charge.charge_type}</span>
+                          <span style={{ color: '#CBD5E1' }}>·</span>
+                          <span style={{ fontSize: 11.5, color: '#64748B', fontFamily: 'monospace' }}>Unit {item.charge.unit_id}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
+                          {item.reasoning}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: '#DCFCE7',
+                          color: '#15803D',
+                        }}
+                      >
+                        CLAIM
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#0F172A' }}>
+                        {formatMoney(item.claimAmount)}
+                      </span>
+                      <ChevronRight size={14} style={{ color: '#94A3B8' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer shortcuts hint */}
+        <div
+          style={{
+            padding: '10px 16px',
+            background: '#F8FAFC',
+            borderTop: '1px solid #E2E8F0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 11,
+            color: '#64748B',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>
+              <kbd style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 3, padding: '1px 4px', marginRight: 4, fontFamily: 'monospace', fontWeight: 600 }}>↑</kbd>
+              <kbd style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 3, padding: '1px 4px', marginRight: 4, fontFamily: 'monospace', fontWeight: 600 }}>↓</kbd>
+              Navigate
+            </span>
+            <span>
+              <kbd style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 3, padding: '1px 4px', marginRight: 4, fontFamily: 'monospace', fontWeight: 600 }}>↵</kbd>
+              Select
+            </span>
+            <span>
+              <kbd style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 3, padding: '1px 4px', marginRight: 4, fontFamily: 'monospace', fontWeight: 600 }}>ESC</kbd>
+              Close
+            </span>
+          </div>
+          <div style={{ color: '#94A3B8', fontSize: 10.5 }}>
+            CUBE 2026 · RECOVER
+          </div>
         </div>
       </div>
     </div>

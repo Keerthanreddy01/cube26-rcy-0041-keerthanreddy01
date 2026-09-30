@@ -17,8 +17,8 @@
 
 | Field | Value / Link | Status |
 |---|---|---|
-| **GitHub Repository** | `[TODO: Insert GitHub Fork URL before submission]` | Ready for URL |
-| **Demo / Deployment URL** | `[TODO: Insert Vercel / Render deployment URL]` | Ready for URL |
+| **GitHub Repository** | `https://github.com/Keerthanreddy01/cube26-rcy-0041-keerthanreddy01` | **Live & Verified** |
+| **Demo / Deployment URL** | `https://recover-cube2026.vercel.app` | **Live & Verified** |
 | **Demo Video (2-min)** | `[TODO: Insert Loom / YouTube unlisted demo video URL]` | Ready for URL |
 | **Evaluation Report** | [`../../EVAL.md`](../../EVAL.md) | **Complete & Verified** |
 | **Architecture Specification** | [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) | **Complete & Verified** |
